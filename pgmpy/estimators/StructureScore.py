@@ -445,3 +445,4 @@ class AICScore(StructureScore):
         score -= num_parents_states * (var_cardinality - 1)
 
         return score
+

@@ -302,3 +302,22 @@ class UndirectedGraph(nx.Graph):
         True
         """
         return nx.is_chordal(self)
+
+    def complete_graph(self):
+        """
+        Returns the complete graph on the nodes of the graph.
+
+        A complete graph is a graph in which each pair of distinct nodes is
+        connected by a unique edge.
+
+        Examples
+        --------
+        >>> from pgmpy.base import UndirectedGraph
+        >>> G = UndirectedGraph()
+        >>> G.add_nodes_from(nodes=['Alice', 'Bob', 'Charles'])
+        >>> G.complete_graph()
+        >>> G.edges()
+        EdgeView([('Alice', 'Bob'), ('Alice', 'Charles'), ('Bob', 'Charles')])
+        """
+        # self.add_nodes_from(self.nodes())
+        self.add_edges_from(itertools.combinations(self.nodes(), 2))
