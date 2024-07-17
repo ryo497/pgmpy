@@ -10,7 +10,7 @@ from scipy.stats._stats_py import _m_broadcast_to, _count, asarray
 from scipy.stats import distributions
 from statsmodels.multivariate.manova import MANOVA
 from xgboost import XGBClassifier, XGBRegressor
-
+import time
 from pgmpy.global_vars import logger
 from pgmpy.independencies import IndependenceAssertion
 
@@ -826,17 +826,24 @@ class NatoriScore():
         self.separating_sets = {}
 
 
-    def calc_g1(self, x_table, y_table, g1_termx, g1_termy, alpha):
-        x_nij = np.ones_like(x_table) * np.sum(x_table, axis=1)[:, np.newaxis]
-        y_nij = np.ones_like(y_table) * np.sum(y_table, axis=1)[:, np.newaxis]
-        x_log_marginal_likelihood = np.sum(gammaln(g1_termx) - gammaln(g1_termx + x_nij) + gammaln(alpha + x_table) - gammaln(alpha))
-        y_log_marginal_likelihood = np.sum(gammaln(g1_termy) - gammaln(g1_termy + y_nij) + gammaln(alpha + y_table) - gammaln(alpha))
-        return x_log_marginal_likelihood + y_log_marginal_likelihood
-    
+    def calc_g1(self, x_table, y_table, alpha):
+        # x_nij = np.sum(x_table, axis=1)
+        # y_nij = np.sum(y_table, axis=1)
+        # n_ij = np.concatenate([x_nij, y_nij])
+        n_ijk = np.concatenate([x_table, y_table])
+        n_ij = np.sum(n_ijk, axis=-1)
+        r1 = x_table.shape[-1]
+        r2 = y_table.shape[-1]
+        g1_term1 = np.sum(gammaln(r1 * alpha) - gammaln(r1 * alpha + n_ij))
+        g1_term2 = np.sum(gammaln(alpha + n_ijk) - gammaln(alpha))
+        return g1_term1 + g1_term2
+
+
     def calc_g3(self, n_xyz, r1, r2, alpha):
-        N_j = np.ones_like(n_xyz) * np.sum(n_xyz, axis=1)[:, np.newaxis]
-        g3_log_marginal_likelihood = np.sum(gammaln(r1 * r2 * alpha) - gammaln(r1 * r2 * alpha + N_j) + gammaln(alpha + n_xyz) - gammaln(alpha))
-        return g3_log_marginal_likelihood
+        n_j = np.sum(n_xyz, axis=1)
+        g3_term1 = np.sum(gammaln(r1 * r2 * alpha) - gammaln(r1 * r2 * alpha + n_j))
+        g3_term2 = np.sum(gammaln(alpha + n_xyz) - gammaln(alpha))
+        return g3_term1 + g3_term2
 
     def bayes_factor(self, X, Y, Z, data):
         # クロス集計表の作成
@@ -846,6 +853,7 @@ class NatoriScore():
         alpha = 1/2
         if Z:
             contingency_table = pd.crosstab(index=[data[z] for z in Z], columns=[data[X], data[Y]])
+            # print(contingency_table)
             contingency_table.fillna(0)
             n_xyz = contingency_table.values
             x_table = data.groupby([data[z] for z in Z] + [data[X]]).size().unstack(fill_value=0)
@@ -854,12 +862,12 @@ class NatoriScore():
             y_table = y_table.values
             # サンプル数の計算
             # g1_term1 = np.ones((2,len(Z), len(n_xyz)))
-            g1_termx = np.ones_like(x_table, dtype=float)
-            g1_termx *= r1 * alpha
-            g1_termy = np.ones_like(y_table, dtype=float)
-            g1_termy *= r2 * alpha
+            # g1_termx = np.ones_like(x_table, dtype=float)
+            # g1_termx *= r1 * alpha
+            # g1_termy = np.ones_like(y_table, dtype=float)
+            # g1_termy *= r2 * alpha
             # マージナルライクリフッドの計算
-            g1_marginal_likelihood = self.calc_g1(x_table, y_table, g1_termx, g1_termy, alpha)
+            g1_marginal_likelihood = self.calc_g1(x_table, y_table, alpha)
             g3_marginal_likelihood = self.calc_g3(n_xyz, r1, r2, alpha)
             # print(g1_marginal_likelihood, g3_marginal_likelihood)
             p_value = g1_marginal_likelihood - g3_marginal_likelihood
@@ -880,45 +888,18 @@ class NatoriScore():
             # x_table = data.unique()
             X_table = data.groupby([X]).size().reindex(data[X].unique(), fill_value=0).to_numpy()
             Y_table = data.groupby([Y]).size().reindex(data[Y].unique(), fill_value=0).to_numpy()
-            # print(X_table, Y_table)
-            n_jxy = np.stack([X_table, Y_table], axis=0)
-            # print(n_jxy)
-            # n_ij = np.sum(n_xyz, axis=0)
-            # alpha = np.sum(n_xyz) / self.equivalent_sample_size
-            g1_term1 = np.ones((2,len(n_xyz)))
-            n_ij = np.ones((2, len(n_xyz)))
-            # print(np.sum(n_jxy, axis=1))
-            for i, r in enumerate([r1, r2]):
-                # print(i)
-                g1_term1[i, :] *= r
-                n_ij[i, :] *= np.sum(n_jxy, axis=1)[i]
-            # print(n_jxy)
-            # print(n_ij)
-            # hoge
-            # print(n_ij)
-            # print(g1_term1)
-            g1_log_marginal_likelihood = np.sum(gammaln(g1_term1 * alpha) - gammaln(g1_term1 * alpha + n_ij) + gammaln(alpha + n_jxy) - gammaln(alpha))
-            # print(g1_term1 * alpha)
-            # print(gammaln(g1_term1 * alpha))
-            # print(gammaln(g1_term1 * alpha + g1_term1))
-            # print(gammaln(alpha + n_xyz[:, np.newaxis, :]).shape)
-            g3_log_marginal_likelihood = np.sum(gammaln(r1 * r2 * alpha) - gammaln(r1 * r2 * alpha + np.sum(n_xyz)) + (gammaln(alpha + n_xyz) - gammaln(alpha)))
-            # print(r1 * r2 * alpha)
-            # print(r1 * r2 * alpha + np.sum(n_xyz))
-            # print(gammaln(r1 * r2 * alpha) - gammaln(r1 * r2 * alpha + np.sum(n_jxy)))
-            # print((gammaln(alpha + n_xyz) - gammaln(alpha)))
-            # print(g3_log_marginal_likelihood)
-            # print(g1_log_marginal_likelihood, g3_log_marginal_likelihood)
-            # hoge
-            # log_marginal_likelihood = g1_log_marginal_likelihood - g3_log_marginal_likelihood
-            g1_marginal_likelihood = np.exp(g1_log_marginal_likelihood)
-            g3_marginal_likelihood = np.exp(g3_log_marginal_likelihood)
-            if abs(g1_marginal_likelihood) < eps and abs(g3_marginal_likelihood) < eps:
-                return None
-            elif abs(g3_marginal_likelihood) < eps:
-                return np.inf
+            # g3_term1 = np.sum(gammaln(r1 * r2 * alpha) - gammaln(r1 * r2 * alpha + np.sum(n_xyz, axis=1)))
+            # g3_term2 = np.sum(gammaln(alpha + n_xyz) - gammaln(alpha))
+            # g3_marginal_likelihood = g3_term1 + g3_term2
+            g3_marginal_likelihood = self.calc_g3(n_xyz, r1, r2, alpha)
+            g1_marginal_likelihood = self.calc_g1(X_table, Y_table, alpha)
+            p_value = g1_marginal_likelihood - g3_marginal_likelihood
+            if p_value > 0:
+                return p_value
             else:
-                return g1_marginal_likelihood / g3_marginal_likelihood
+                None
+            # g1_term1 = np.sum(gammaln(r1 * alpha) - gammaln(r1 * alpha + X_table))
+            # hoge
 
 
     def separate(self, X, Y, Z, data, boolean=True):
