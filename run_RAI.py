@@ -11,7 +11,7 @@ from pgmpy.estimators import BicScore, HillClimbSearch
 from pgmpy.estimators import PC
 from pgmpy.estimators.CITests import *
 import time
-SAVE_DIR = "./results_changed"
+SAVE_DIR = "./results_2"
 
 ESTIMATOR={
     "RAI": RAIEstimator,
@@ -91,24 +91,26 @@ def arg_parser():
 def main():
     args = arg_parser()
     data_type = args.data_type
-    # data_type = "asia"
-    # sample_size = 100000
     sample_size = args.sample_size
     max_iter = args.max_iter
     estimate_type = args.estimate_type
     structure_score = args.structure_score
     file_path = f"{SAVE_DIR}/{estimate_type}_{data_type}_{sample_size}_{structure_score}"
     file_exists = os.path.isfile(file_path)
-    if file_exists:
-        return
+    # if file_exists:
+    #     return
     test_benchmark(estimate_type,
                    data_type,
                    sample_size,
                    structure_score,
                    max_iter)
+    # data_type = "sachs"
+    # sample_size = 100000
     # model, data = load_data(data_type, sample_size)
+    # t = time.time()
     # estimator = RAIEstimator(data)
     # best_model, _ = estimator.estimate()
+    # calc_time = time.time() - t
     # display_graph_info(best_model)
     # bic = BicScore(data)
 
@@ -116,7 +118,8 @@ def main():
     # # rai_bic_score = bic.score(model)
     # rai_bic_score = bic.score(best_model)
     # print("BIC Score for the RAI model:", rai_bic_score)
-    # # display_graph_info(best_model)
+    # print("Calculation Time:", calc_time)
+    # display_graph_info(best_model)
     # hc = HillClimbSearch(data)
     # hc_model = hc.estimate(scoring_method=BicScore(data))
 

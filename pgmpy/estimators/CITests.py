@@ -827,14 +827,18 @@ class NatoriScore():
 
 
     def calc_g1(self, x_table, y_table, alpha):
-        # x_nij = np.sum(x_table, axis=1)
-        # y_nij = np.sum(y_table, axis=1)
+        x_nijk = np.sum(x_table, axis=1)
+        y_nijk = np.sum(y_table, axis=1)
         # n_ij = np.concatenate([x_nij, y_nij])
-        n_ijk = np.concatenate([x_table, y_table])
-        n_ij = np.sum(n_ijk, axis=-1)
+        # n_ijk = np.concatenate([x_table, y_table])
+        n_ijk = np.hstack((x_table, y_table))
+        x_nij = np.sum(x_nijk, axis=-1)
+        y_nij = np.sum(y_nijk, axis=-1)
         r1 = x_table.shape[-1]
         r2 = y_table.shape[-1]
-        g1_term1 = np.sum(gammaln(r1 * alpha) - gammaln(r1 * alpha + n_ij))
+        g1_term1 = np.sum(gammaln(r1 * alpha) - gammaln(r1 * alpha + x_nij)) \
+                    + np.sum(gammaln(r2 * alpha) - gammaln(r2 * alpha + y_nij))
+        # g1_term1 = np.sum(gammaln(r1 * alpha) - gammaln(r1 * alpha + n_ij[r1:]))
         g1_term2 = np.sum(gammaln(alpha + n_ijk) - gammaln(alpha))
         return g1_term1 + g1_term2
 
@@ -849,57 +853,39 @@ class NatoriScore():
         # クロス集計表の作成
         r1 = len(data[X].unique())
         r2 = len(data[Y].unique())
-        eps = 1e-8
         alpha = 1/2
         if Z:
             contingency_table = pd.crosstab(index=[data[z] for z in Z], columns=[data[X], data[Y]])
-            # print(contingency_table)
             contingency_table.fillna(0)
             n_xyz = contingency_table.values
             x_table = data.groupby([data[z] for z in Z] + [data[X]]).size().unstack(fill_value=0)
             y_table = data.groupby([data[z] for z in Z] + [data[Y]]).size().unstack(fill_value=0)
             x_table = x_table.values
             y_table = y_table.values
-            # サンプル数の計算
-            # g1_term1 = np.ones((2,len(Z), len(n_xyz)))
-            # g1_termx = np.ones_like(x_table, dtype=float)
-            # g1_termx *= r1 * alpha
-            # g1_termy = np.ones_like(y_table, dtype=float)
-            # g1_termy *= r2 * alpha
-            # マージナルライクリフッドの計算
             g1_marginal_likelihood = self.calc_g1(x_table, y_table, alpha)
             g3_marginal_likelihood = self.calc_g3(n_xyz, r1, r2, alpha)
-            # print(g1_marginal_likelihood, g3_marginal_likelihood)
             p_value = g1_marginal_likelihood - g3_marginal_likelihood
             if p_value > 0:
                 return p_value
             else:
-                None
-            # if abs(g1_marginal_likelihood) < eps and abs(g3_marginal_likelihood) < eps:
-            #     return None
-            # elif abs(g3_marginal_likelihood) < eps:
-            #     return np.inf
-            # else:
-            #     return g1_marginal_likelihood / g3_marginal_likelihood
+                return None
         else:
-            # contingency_table = pd.crosstab(columns=[data[X], data[Y]])
             contingency_table = pd.crosstab(index=data[X], columns=data[Y])
             n_xyz = contingency_table.values
-            # x_table = data.unique()
-            X_table = data.groupby([X]).size().reindex(data[X].unique(), fill_value=0).to_numpy()
-            Y_table = data.groupby([Y]).size().reindex(data[Y].unique(), fill_value=0).to_numpy()
-            # g3_term1 = np.sum(gammaln(r1 * r2 * alpha) - gammaln(r1 * r2 * alpha + np.sum(n_xyz, axis=1)))
-            # g3_term2 = np.sum(gammaln(alpha + n_xyz) - gammaln(alpha))
-            # g3_marginal_likelihood = g3_term1 + g3_term2
+            X_table = data.groupby([X]).size().to_numpy()
+            Y_table = data.groupby([Y]).size().to_numpy()
             g3_marginal_likelihood = self.calc_g3(n_xyz, r1, r2, alpha)
-            g1_marginal_likelihood = self.calc_g1(X_table, Y_table, alpha)
+            g1_term1 = np.sum(gammaln(r1 * alpha) - gammaln(r1 * alpha + np.sum(X_table))) + np.sum(gammaln(r2 * alpha) - gammaln(r2 * alpha + np.sum(Y_table)))
+            g1_term2 = np.sum(gammaln(alpha + np.hstack((X_table, Y_table))) - gammaln(alpha))
+            g1_marginal_likelihood = g1_term1 + g1_term2
+            g3_term1 = np.sum(gammaln(r1 * r2 * alpha) - gammaln(r1 * r2 * alpha + np.sum(n_xyz)))
+            g3_term2 = np.sum(gammaln(alpha + n_xyz) - gammaln(alpha))
+            g3_marginal_likelihood = g3_term1 + g3_term2
             p_value = g1_marginal_likelihood - g3_marginal_likelihood
             if p_value > 0:
                 return p_value
             else:
-                None
-            # g1_term1 = np.sum(gammaln(r1 * alpha) - gammaln(r1 * alpha + X_table))
-            # hoge
+                return None
 
 
     def separate(self, X, Y, Z, data, boolean=True):

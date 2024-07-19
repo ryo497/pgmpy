@@ -2,7 +2,7 @@
 from collections import deque
 from itertools import permutations
 from easydict import EasyDict
-
+import random
 import networkx as nx
 from tqdm.auto import trange
 
@@ -118,6 +118,9 @@ class RAIEstimator(StructureEstimator):
                             pdag.remove_edges_from([(Z, X), (Z, Y)])
 
         progress = True
+        iteration = 0
+        num_nodes = len(pdag.nodes())
+        max_iter = num_nodes * 10
         while progress:  # as long as edges can be oriented (removed)
             num_edges = pdag.number_of_edges()
 
@@ -130,20 +133,24 @@ class RAIEstimator(StructureEstimator):
                         set(pdag.successors(Y)) & set(pdag.predecessors(Y))
                     ):
                         pdag.remove_edge(Y, Z)
-
+            print("2 done")
             # 3) for each X-Y with a directed path from X to Y, orient edges to X->Y
-            for pair in node_pairs:
-                X, Y = pair
-                if pdag.has_edge(Y, X) and pdag.has_edge(X, Y):
-                    for path in nx.all_simple_paths(pdag, X, Y):
-                        is_directed = True
-                        for src, dst in list(zip(path, path[1:])):
-                            if pdag.has_edge(dst, src):
-                                is_directed = False
-                        if is_directed:
-                            pdag.remove_edge(Y, X)
-                            break
-
+            # めちゃくちゃ遅い
+            print(len(node_pairs))
+            if len(node_pairs) < num_nodes * num_nodes / 2:
+                for pair in node_pairs:
+                    X, Y = pair
+                    if pdag.has_edge(Y, X) and pdag.has_edge(X, Y):
+                        print(nx.all_simple_paths(pdag, X, Y))
+                        for path in nx.all_simple_paths(pdag, X, Y):
+                            is_directed = True
+                            for src, dst in list(zip(path, path[1:])):
+                                if pdag.has_edge(dst, src):
+                                    is_directed = False
+                            if is_directed:
+                                pdag.remove_edge(Y, X)
+                                break
+            print("3 done")
             # 4) for each X-Z-Y with X->W, Y->W, and Z-W, orient edges to Z->W
             for pair in node_pairs:
                 X, Y = pair
@@ -159,9 +166,12 @@ class RAIEstimator(StructureEstimator):
                         & (set(pdag.successors(Z)) & set(pdag.predecessors(Z)))
                     ):
                         pdag.remove_edge(W, Z)
-
+            print("4 done")
             progress = num_edges > pdag.number_of_edges()
-
+            iteration += 1
+            if iteration >= max_iter:
+                progress = False
+        # print("done")
         # TODO: This is temp fix to get a PDAG object.
         edges = set(pdag.edges())
         undirected_edges = []
@@ -260,7 +270,6 @@ class RAIEstimator(StructureEstimator):
 
     
     def RecrusiveSearch(self, Nz, Gs, Gex, Gall, Go, ci_test):
-        # print(Nz)
         # Step 1: Initial checks and setup for arguments
         cls_test = ci_test(self.data)
         if all(len(Gs[node]) <= Nz for node in Gs):
@@ -275,16 +284,17 @@ class RAIEstimator(StructureEstimator):
             for node_x in Gex.node2parents[node_y]:
                 Z = parents_in_gs & Gex.node2parents[node_y] - {node_x}
                 if len(Z) >= Nz:
+                    # Z = random.sample(list(Z), Nz)
+                    # if cls_test.separate(node_x, node_y, Z):
+                    #     # print(f"独立である {node_x, node_y}")
+                    #     if Gall.has_edge(node_x, node_y):
+                    #         Gall.remove_edge(node_x, node_y)
                     for Z in combinations(Z, Nz):
                         if cls_test.separate(node_x, node_y, Z):
                             if Gall.has_edge(node_x, node_y):
                                 Gall.remove_edge(node_x, node_y)
-        # show(Gs)
-        if Gex.nodes:
-            Gs = self.skeleton2pdag(Gs, cls_test.separating_sets)
-        # show(Gall)
-        # show(Gs)
-        edge_list = []
+                    #         break
+        is_removed = False
         for node_y in Gs.nodes:
             neighbors = list(Gs.neighbors(node_y))
             for node_x in neighbors:
@@ -295,23 +305,31 @@ class RAIEstimator(StructureEstimator):
                                         Z,
                                         self.data,
                                         boolean=True):
-                        print("#########")
-                        # if Gall.has_edge(node_x, node_y):
-                        #     Gall.remove_edge(node_x, node_y)
-                        # if Gs.has_edge(node_x, node_y):
-                        #     Gs.remove_edge(node_x, node_y)
+                        is_removed = True
+                        if Gall.has_edge(node_x, node_y):
+                            Gall.remove_edge(node_x, node_y)
+                        if Gs.has_edge(node_x, node_y):
+                            Gs.remove_edge(node_x, node_y)
                 else:
                     set_Pa = Gex.node2parents[node_y] | set(neighbors) - {node_x}
                     num_Pa = len(set_Pa)
                     if num_Pa >= Nz:
+                        # Z = random.sample(list(set_Pa), Nz)
+                        # if cls_test.separate(node_x, node_y, Z, self.data, boolean=True):
+                        #         print(f"独立である {node_x, node_y}")
+                        #         is_removed = True
+                        #         if Gs.has_edge(node_x, node_y):
+                        #             Gs.remove_edge(node_x, node_y)
+                        #         if Gall.has_edge(node_x, node_y):
+                        #             Gall.remove_edge(node_x, node_y)
                         for Z in combinations(set_Pa, Nz):
-                            # print(Z)
                             if cls_test.separate(node_x, node_y, Z, self.data, boolean=True):
-                                # print(f"独立である {node_x, node_y}")
+                                is_removed = True
                                 if Gs.has_edge(node_x, node_y):
                                     Gs.remove_edge(node_x, node_y)
                                 if Gall.has_edge(node_x, node_y):
                                     Gall.remove_edge(node_x, node_y)
+                        #         break
 
                             # if not cls_test.separate(node_x, node_y, Z, self.data, boolean=True):
                             #     print(f"独立でない {node_x, node_y}")
@@ -339,32 +357,28 @@ class RAIEstimator(StructureEstimator):
                                 #     Gall.remove_edge(node_x, node_y)
                                 # if Gs.has_edge(node_x, node_y):
                                 #     Gs.remove_edge(node_x, node_y)
-        # この項大事そう…
         # print(edge_list)
         nodes = Gs.nodes
-        # Gs = Graph()
-        # Gs.add_nodes_from(nodes)
-        # Gs.add_edges_from(edge_list)
-        # Gall = Gs.copy()
         # show(Gs)
-        Gs = self.skeleton2pdag(Gs, cls_test.separating_sets)
-        Gall = self.skeleton2pdag(Gall, cls_test.separating_sets)
-        # show(Gs)
-        independent_nodes = nodes - Gs.nodes
-        if independent_nodes:
-            Go.add_nodes_from(independent_nodes)
-        Gd, g_subs, Gex = self.order_grouping(Gs, Gex)
-        for subs in g_subs:
-            Go, gs = self.RecrusiveSearch(Nz + 1, subs, Gex, Gall, Go, ci_test)
-        return self.RecrusiveSearch(Nz + 1, Gd, Gex, Gall, Go, ci_test)
+        if is_removed:
+            Gs = self.skeleton2pdag(Gs, cls_test.separating_sets)
+            Gall = self.skeleton2pdag(Gall, cls_test.separating_sets)
+            # show(Gs)
+            independent_nodes = nodes - Gs.nodes
+            if independent_nodes:
+                Go.add_nodes_from(independent_nodes)
+            Gd, g_subs, Gex = self.order_grouping(Gs, Gex)
+            for subs in g_subs:
+                Go, gs = self.RecrusiveSearch(Nz + 1, subs, Gex, Gall, Go, ci_test)
+            return self.RecrusiveSearch(Nz + 1, Gd, Gex, Gall, Go, ci_test)
+        else:
+            return self.RecrusiveSearch(Nz + 1, Gs, Gex, Gall, Go, ci_test)
 
 
     def order_grouping(self, Gs, Gex):
         sccs = list(nx.strongly_connected_components(Gs))
         scc_graph = nx.condensation(Gs)
-        # print(Gs)
         topological_order = list(nx.topological_sort(scc_graph))
-        # print(topological_order)
         topological_lowest_nodes = sccs[topological_order[0]]
         gc = self.extract_subgraph(
             topological_lowest_nodes,
@@ -378,7 +392,6 @@ class RAIEstimator(StructureEstimator):
                 Gs
             )
             SubStructures.append(sub)
-        
         Gex = self.update_gex(
             Gex,
             sccs,
